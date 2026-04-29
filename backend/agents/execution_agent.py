@@ -3,6 +3,8 @@ QueryMind — Execution Agent Node
 """
 from backend.agents.state import QueryMindState
 from backend.connectors import get_or_connect
+from backend.core.config import settings
+from backend.security.pii_masking import mask_pii_rows
 
 async def execution_agent_node(state: QueryMindState) -> QueryMindState:
     """Execute the validated SQL against the active data source."""
@@ -23,7 +25,10 @@ async def execution_agent_node(state: QueryMindState) -> QueryMindState:
     
     try:
         result = await connector.execute(state["sql"])
-        state["results"] = result.to_dict_list()
+        rows = result.to_dict_list()
+        if settings.ENABLE_PII_MASKING:
+            rows = mask_pii_rows(rows)
+        state["results"] = rows
         state["row_count"] = result.row_count
         state["reasoning"] = [f"Execution Agent: Executed SQL successfully. Returned {result.row_count} rows."]
     except Exception as e:

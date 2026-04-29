@@ -7,9 +7,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from backend.api.routers import sources, chat, health, query
+from backend.api.routers import sources, chat, health, query, dashboards
 from backend.core.config import settings
 from backend.core.database import engine, Base
+from backend.dashboard_engine import models as _dashboard_models  # noqa: F401
 from backend.core.redis_client import get_redis
 from backend.core.qdrant_client import get_qdrant
 from backend.observability.langfuse_client import init_langfuse
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(sources.router, prefix="/api/v1/sources", tags=["sources"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
     app.include_router(query.router, prefix="/api/v1/query", tags=["query"])
+    app.include_router(dashboards.router, prefix="/api/v1/dashboards", tags=["dashboards"])
     return app
 
 

@@ -2,11 +2,13 @@
 Day 1 chat endpoint: NL question -> SQL generation.
 """
 import uuid
+import json
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 from backend.agents.orchestrator import get_compiled_graph
 from backend.memory.checkpointer import get_checkpointer
@@ -47,10 +49,32 @@ class ChatResponse(BaseModel):
     question: str
     intent: str
     sql: str | None
+    results: list[dict] | None = None
     summary: str | None
     dashboard_spec: dict | None
     reasoning: list[str]
     thread_id: str
+
+
+def _build_initial_state(payload: ChatRequest, source: DataSourceModel, credentials: dict) -> tuple[str, dict, dict]:
+    thread_id = payload.thread_id or str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
+    initial_state = {
+        "user_id": payload.user_id,
+        "source_id": str(source.id),
+        "source_type": source.source_type,
+        "credentials": credentials,
+        "question": payload.question,
+        "messages": [("user", payload.question)],
+        "sql": "",
+        "error": None,
+        "retry_count": 0,
+        "results": None,
+        "summary": None,
+        "dashboard_spec": None,
+        "reasoning": [],
+    }
+    return thread_id, config, initial_state
 
 
 @router.post("", response_model=ChatResponse)
@@ -69,9 +93,7 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
     credentials = decrypt_credentials(source.encrypted_credentials)
     logger.info("chat_source_loaded", source_id=str(source.id), source_type=source.source_type)
     
-    # Thread ID for Postgres Checkpointer Memory
-    thread_id = payload.thread_id or str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    thread_id, config, initial_state = _build_initial_state(payload, source, credentials)
 
     logger.info("chat_graph_start", thread_id=thread_id)
     langfuse = get_langfuse()
@@ -88,24 +110,6 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
 
     async with get_checkpointer() as checkpointer:
         graph = get_compiled_graph(checkpointer=checkpointer)
-        
-        # Initialize state. 
-        # For LangGraph, if the thread_id exists in Postgres, it will merge this state over it.
-        initial_state = {
-            "user_id": payload.user_id,
-            "source_id": str(source.id),
-            "source_type": source.source_type,
-            "credentials": credentials,
-            "question": payload.question,
-            "messages": [("user", payload.question)], # Add to memory log
-            "sql": "",
-            "error": None,
-            "retry_count": 0,
-            "results": None,
-            "summary": None,
-            "dashboard_spec": None,
-            "reasoning": []
-        }
         
         final_state = initial_state
         async for step_output in graph.astream(initial_state, config=config):
@@ -154,10 +158,71 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
         intent=result.get("intent", "unknown"),
         sql=result.get("sql"),
         summary=result.get("summary"),
+        results=result.get("results"),
         dashboard_spec=result.get("dashboard_spec"),
         reasoning=result.get("reasoning", []),
         thread_id=thread_id
     )
+
+
+@router.post("/stream")
+async def chat_stream(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
+    stream_logger = structlog.get_logger("chat_stream")
+    stream_logger.info("stream_request_received", source_id=str(payload.source_id))
+    row = await db.execute(
+        select(DataSourceModel).where(
+            DataSourceModel.id == payload.source_id,
+            DataSourceModel.is_active.is_(True),
+        )
+    )
+    source = row.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    credentials = decrypt_credentials(source.encrypted_credentials)
+    thread_id, config, initial_state = _build_initial_state(payload, source, credentials)
+    stream_logger.info("stream_graph_starting", thread_id=thread_id)
+
+    async def event_gen():
+        try:
+            async with get_checkpointer() as checkpointer:
+                graph = get_compiled_graph(checkpointer=checkpointer)
+                final_state = dict(initial_state)
+                stream_logger.info("stream_emitting_start", thread_id=thread_id)
+                yield {"event": "start", "data": json.dumps({"thread_id": thread_id})}
+                async for step_output in graph.astream(initial_state, config=config):
+                    for node_name, state_update in step_output.items():
+                        final_state.update(state_update)
+                        stream_logger.info("stream_node_done", node=node_name,
+                                           error=final_state.get("error"),
+                                           reasoning_tail=(final_state.get("reasoning") or [])[-1:])
+                        payload_event = {
+                            "node": node_name,
+                            "state": _state_view(final_state),
+                            "reasoning": final_state.get("reasoning", []),
+                        }
+                        yield {"event": "node", "data": json.dumps(payload_event, default=str)}
+
+                done_payload = {
+                    "source_id": str(source.id),
+                    "question": payload.question,
+                    "intent": final_state.get("intent", "unknown"),
+                    "sql": final_state.get("sql"),
+                    "summary": final_state.get("summary"),
+                    "results": final_state.get("results"),
+                    "dashboard_spec": final_state.get("dashboard_spec"),
+                    "reasoning": final_state.get("reasoning", []),
+                    "thread_id": thread_id,
+                }
+                stream_logger.info("stream_emitting_final", thread_id=thread_id,
+                                   results_count=len(done_payload.get("results") or []),
+                                   has_dashboard=bool(done_payload.get("dashboard_spec")))
+                yield {"event": "final", "data": json.dumps(done_payload, default=str)}
+        except Exception as exc:
+            stream_logger.error("stream_generator_error", error=str(exc))
+            yield {"event": "error", "data": json.dumps({"error": str(exc)})}
+
+    return EventSourceResponse(event_gen())
 
 @router.get("/{thread_id}/history")
 async def get_chat_history(thread_id: str):
