@@ -1,0 +1,114 @@
+
+replicaCount: 1
+
+image:
+  backend:
+    repository: querymind/backend
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: querymind/frontend
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 2
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+existingSecret: ""
+
+env:
+  APP_ENV: production
+  APP_HOST: "0.0.0.0"
+  APP_PORT: "8000"
+  DEBUG: "false"
+  POSTGRES_HOST: querymind-postgresql
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: querymind
+  POSTGRES_USER: querymind
+  REDIS_URL: redis://querymind-redis:6379/0
+  QDRANT_URL: http://querymind-qdrant:6333
+  QDRANT_COLLECTION_SCHEMA: schema_embeddings
+  QDRANT_COLLECTION_MEMORY: user_memory
+  QDRANT_COLLECTION_QUERY_CACHE: query_cache
+  QDRANT_TIMEOUT_SECONDS: "10"
+  OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
+  LLM_SQL_MODEL: "anthropic/claude-sonnet-4-5"
+  LLM_FAST_MODEL: "openai/gpt-4o-mini"
+  LLM_EMBEDDING_MODEL: "openai/text-embedding-3-small"
+  OPENROUTER_TIMEOUT_SECONDS: "30"
+  LANGFUSE_HOST: "https://cloud.langfuse.com"
+  ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+  JWT_ALGORITHM: "HS256"
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: "30"
+  VLLM_EMBEDDING_SIMILARITY_THRESHOLD: "0.95"
+  MAX_QUERY_ROWS: "10000"
+  QUERY_TIMEOUT_SECONDS: "30"
+  ENABLE_PII_MASKING: "true"
+  ENABLE_AUDIT_LOGS: "true"
+  RBAC_ENABLED: "true"
+
+postgresql:
+  enabled: true
+  image:
+    tag: 16
+  auth:
+    username: querymind
+    password: querymind_secret
+    database: querymind
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+redis:
+  enabled: true
+  image:
+    tag: 7
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+qdrant:
+  enabled: true
+  persistence:
+    size: 20Gi

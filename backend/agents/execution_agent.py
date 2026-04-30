@@ -5,7 +5,6 @@ from backend.agents.state import QueryMindState
 from backend.connectors import get_or_connect
 from backend.core.config import settings
 from backend.security.pii_masking import mask_pii_rows
-
 async def execution_agent_node(state: QueryMindState) -> QueryMindState:
     """Execute the validated SQL against the active data source."""
     

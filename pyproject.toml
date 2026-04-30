@@ -13,31 +13,25 @@ dependencies = [
     "httpx>=0.27.0",
     "sse-starlette>=2.1.0",
     "websockets>=13.0",
-
     # LangChain / LangGraph
     "langchain>=0.3.0",
     "langchain-openai>=0.2.0",
     "langchain-community>=0.3.0",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-postgres>=2.0.0",
-
     # LLM / Embeddings (via OpenRouter)
     "openai>=1.50.0",
     "tiktoken>=0.7.0",
-
     # Vector DB
     "qdrant-client[fastembed]>=1.11.0",
-
     # Relational DB
     "asyncpg>=0.29.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "alembic>=1.13.0",
     "psycopg2-binary>=2.9.0",
-
     # Redis
     "redis>=5.0.0",
     "hiredis>=3.0.0",
-
     # Data connectors
     "snowflake-connector-python>=3.12.0",
     "google-cloud-bigquery>=3.25.0",
@@ -46,20 +40,16 @@ dependencies = [
     "duckdb>=1.1.0",
     "pandas>=2.2.0",
     "pyarrow>=17.0.0",
-
     # Security / Crypto
     "cryptography>=43.0.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
     "pydantic-settings>=2.5.0",
-
     # Observability
     "langfuse>=2.50.0",
     "prometheus-client>=0.21.0",
-
     # MCP (Model Context Protocol)
     "mcp>=1.0.0",
-
     # Utilities
     "pydantic>=2.9.0",
     "python-dotenv>=1.0.0",
@@ -69,6 +59,7 @@ dependencies = [
     "typer>=0.12.0",
     "aiofiles>=24.1.0",
     "python-ulid>=2.7.0",
+    "sqlglot>=30.6.0",
 ]
 
 [project.optional-dependencies]

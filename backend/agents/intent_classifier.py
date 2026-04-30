@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from backend.agents.state import QueryMindState
 from backend.core.config import settings
 from backend.memory.long_term import retrieve_user_preferences
+from backend.security.prompt_injection import detect_prompt_injection
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -27,6 +28,15 @@ class IntentSchema(BaseModel):
 
 async def intent_classifier_node(state: QueryMindState) -> QueryMindState:
     """Classify the user intent and load long-term user preferences."""
+    # First, check for prompt injection!
+    is_suspicious, reason = detect_prompt_injection(state["question"])
+    if is_suspicious:
+        state["error"] = reason
+        state["needs_clarification"] = True
+        state["summary"] = "Sorry, your request appears suspicious and has been blocked."
+        state["reasoning"] = [f"Intent Classifier: {reason}"]
+        return state
+
     # Load long term preferences early, but never block the flow on memory issues.
     try:
         prefs = await retrieve_user_preferences(state["user_id"], state["question"])

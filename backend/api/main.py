@@ -11,6 +11,7 @@ from backend.api.routers import sources, chat, health, query, dashboards
 from backend.core.config import settings
 from backend.core.database import engine, Base
 from backend.dashboard_engine import models as _dashboard_models  # noqa: F401
+from backend.schema_registry import audit_models as _audit_models  # noqa: F401
 from backend.core.redis_client import get_redis
 from backend.core.qdrant_client import get_qdrant
 from backend.observability.langfuse_client import init_langfuse

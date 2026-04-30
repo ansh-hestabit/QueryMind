@@ -124,8 +124,7 @@ helm-deploy: ## Deploy to Kubernetes
 	helm upgrade --install querymind infra/helm/querymind/ \
 		--namespace querymind \
 		--create-namespace \
-		-f infra/helm/querymind/values.yaml \
-		--wait
+		-f infra/helm/querymind/values.yaml
 
 helm-uninstall: ## Uninstall from Kubernetes
 	helm uninstall querymind --namespace querymind

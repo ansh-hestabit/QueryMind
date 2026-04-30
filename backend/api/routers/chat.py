@@ -14,27 +14,12 @@ from backend.agents.orchestrator import get_compiled_graph
 from backend.memory.checkpointer import get_checkpointer
 from backend.core.database import get_db
 from backend.schema_registry.models import DataSourceModel
+from backend.schema_registry.audit_models import AuditLogModel
 from backend.security.encryption import decrypt_credentials
 from backend.observability.langfuse_client import get_langfuse
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
-
-
-def _state_view(state: dict) -> dict:
-    """Create a compact, safe state view for debug logs."""
-    return {
-        "intent": state.get("intent"),
-        "question": state.get("question"),
-        "sql": (state.get("sql") or "")[:300],
-        "error": state.get("error"),
-        "retry_count": state.get("retry_count"),
-        "row_count": state.get("row_count"),
-        "results_count": len(state.get("results") or []),
-        "summary": (state.get("summary") or "")[:300],
-        "dashboard_spec_present": bool(state.get("dashboard_spec")),
-        "reasoning_tail": (state.get("reasoning") or [])[-1:] if state.get("reasoning") else [],
-    }
 
 
 class ChatRequest(BaseModel):
@@ -54,6 +39,42 @@ class ChatResponse(BaseModel):
     dashboard_spec: dict | None
     reasoning: list[str]
     thread_id: str
+
+
+def _state_view(state: dict) -> dict:
+    """Create a compact, safe state view for debug logs."""
+    return {
+        "intent": state.get("intent"),
+        "question": state.get("question"),
+        "sql": (state.get("sql") or "")[:300],
+        "error": state.get("error"),
+        "retry_count": state.get("retry_count"),
+        "row_count": state.get("row_count"),
+        "results_count": len(state.get("results") or []),
+        "summary": (state.get("summary") or "")[:300],
+        "dashboard_spec_present": bool(state.get("dashboard_spec")),
+        "reasoning_tail": (state.get("reasoning") or [])[-1:] if state.get("reasoning") else [],
+    }
+
+
+async def _log_audit(db: AsyncSession, payload: ChatRequest, result: dict, source_id: str, thread_id: str):
+    """Log the query execution for governance."""
+    try:
+        log_entry = AuditLogModel(
+            source_id=source_id,
+            user_id=payload.user_id,
+            thread_id=thread_id,
+            question=payload.question,
+            intent=result.get("intent"),
+            generated_sql=result.get("sql"),
+            row_count=len(result.get("results") or []),
+            is_success=not bool(result.get("error")),
+            error_message=result.get("error"),
+        )
+        db.add(log_entry)
+        await db.commit()
+    except Exception as exc:
+        logger.error("audit_log_failed", error=str(exc))
 
 
 def _build_initial_state(payload: ChatRequest, source: DataSourceModel, credentials: dict) -> tuple[str, dict, dict]:
@@ -152,6 +173,8 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
         except Exception as exc:
             logger.warning("langfuse_trace_finalize_failed", error=str(exc))
 
+    await _log_audit(db, payload, result, source.id, thread_id)
+
     return ChatResponse(
         source_id=str(source.id),
         question=payload.question,
@@ -217,6 +240,10 @@ async def chat_stream(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
                 stream_logger.info("stream_emitting_final", thread_id=thread_id,
                                    results_count=len(done_payload.get("results") or []),
                                    has_dashboard=bool(done_payload.get("dashboard_spec")))
+                                   
+                # Async generator cannot await safely on detached session if disconnected, but we try
+                await _log_audit(db, payload, final_state, source.id, thread_id)
+                
                 yield {"event": "final", "data": json.dumps(done_payload, default=str)}
         except Exception as exc:
             stream_logger.error("stream_generator_error", error=str(exc))
