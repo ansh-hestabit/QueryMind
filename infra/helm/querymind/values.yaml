@@ -4,7 +4,7 @@ replicaCount: 1
 image:
   backend:
     repository: querymind/backend
-    tag: v0.1.0
+    tag: v0.1.7
     pullPolicy: IfNotPresent
   frontend:
     repository: querymind/frontend
@@ -83,6 +83,7 @@ env:
   ENABLE_PII_MASKING: "true"
   ENABLE_AUDIT_LOGS: "true"
   RBAC_ENABLED: "true"
+  SLACK_BOT_TOKEN: "REPLACE_WITH_YOUR_TOKEN"
 
 postgresql:
   enabled: true

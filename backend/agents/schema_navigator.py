@@ -5,6 +5,7 @@ import re
 from backend.agents.state import QueryMindState
 from backend.schema_registry.embeddings import retrieve_relevant_tables
 from backend.connectors import get_or_connect
+from backend.cache.schema_cache import get_cached_schema, set_cached_schema
 
 
 def _sanitize_ddl(ddl: str) -> str:
@@ -25,13 +26,20 @@ async def schema_navigator_node(state: QueryMindState) -> QueryMindState:
         state["reasoning"] = [f"Schema Navigator: Found {len(tables)} relevant tables via semantic search."]
     else:
         # Fallback to full schema
-        connector = await get_or_connect(
-            source_id=state["source_id"],
-            source_type=state["source_type"],
-            credentials=state["credentials"],
-        )
-        schema = await connector.get_schema()
+        schema = await get_cached_schema(state["source_id"])
+        
+        if schema:
+            state["reasoning"] = ["Schema Navigator: Loaded full schema context from Redis cache (semantic search fallback)."]
+        else:
+            connector = await get_or_connect(
+                source_id=state["source_id"],
+                source_type=state["source_type"],
+                credentials=state["credentials"],
+            )
+            schema = await connector.get_schema()
+            await set_cached_schema(state["source_id"], schema)
+            state["reasoning"] = ["Schema Navigator: Crawled full schema context from DB and cached to Redis (semantic search fallback)."]
+            
         state["schema_context"] = schema.to_prompt_context()
-        state["reasoning"] = ["Schema Navigator: Loaded full schema context (semantic search fallback)."]
         
     return state

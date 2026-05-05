@@ -7,10 +7,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from backend.api.routers import sources, chat, health, query, dashboards
+from backend.api.routers import sources, chat, health
 from backend.core.config import settings
 from backend.core.database import engine, Base
-from backend.dashboard_engine import models as _dashboard_models  # noqa: F401
 from backend.schema_registry import audit_models as _audit_models  # noqa: F401
 from backend.core.redis_client import get_redis
 from backend.core.qdrant_client import get_qdrant
@@ -69,7 +68,6 @@ async def _ensure_qdrant_collections(qdrant):
     for collection_name in [
         settings.QDRANT_COLLECTION_SCHEMA,
         settings.QDRANT_COLLECTION_MEMORY,
-        settings.QDRANT_COLLECTION_QUERY_CACHE,
     ]:
         if collection_name not in existing:
             await qdrant.create_collection(
@@ -103,8 +101,6 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(sources.router, prefix="/api/v1/sources", tags=["sources"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
-    app.include_router(query.router, prefix="/api/v1/query", tags=["query"])
-    app.include_router(dashboards.router, prefix="/api/v1/dashboards", tags=["dashboards"])
     return app
 
 

@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     LLM_FAST_MODEL: str = "openai/gpt-4o-mini"
     LLM_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
     OPENROUTER_TIMEOUT_SECONDS: int = 30
+    
+    # Slack Integration
+    SLACK_BOT_TOKEN: str | None = None
 
     # --- LangFuse ---
     LANGFUSE_PUBLIC_KEY: str = ""

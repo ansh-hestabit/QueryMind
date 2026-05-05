@@ -14,6 +14,7 @@ from backend.core.database import get_db
 from backend.schema_registry.models import DataSourceModel, SchemaSnapshotModel
 from backend.security.encryption import decrypt_credentials, encrypt_credentials
 from backend.schema_registry.embeddings import embed_and_store_schema
+from backend.cache.schema_cache import invalidate_cached_schema
 
 router = APIRouter()
 
@@ -156,6 +157,10 @@ async def crawl_schema(source_id: UUID, db: AsyncSession = Depends(get_db)):
     source.last_schema_crawl = datetime.now(UTC)
     db.add(snapshot)
     db.add(source)
+    
+    # Invalidate Redis Cache so agents fetch fresh schema next run
+    await invalidate_cached_schema(str(source.id))
+    
     return {"source_id": str(source.id), "tables": len(schema.tables)}
 
 
