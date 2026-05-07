@@ -6,8 +6,8 @@ from openai import AsyncOpenAI
 from backend.agents.state import QueryMindState
 from backend.core.config import settings
 import structlog
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
+from mcp.client.sse import sse_client
+from mcp import ClientSession
 
 logger = structlog.get_logger(__name__)
 
@@ -99,16 +99,22 @@ async def insight_extractor_node(state: QueryMindState) -> QueryMindState:
                 
                 state["reasoning"].append(f"Insight Extractor: Attempting to send Slack alert to {channel}")
                 
-                if settings.SLACK_BOT_TOKEN:
-                    try:
-                        client = WebClient(token=settings.SLACK_BOT_TOKEN)
-                        client.chat_postMessage(channel=channel, text=slack_msg)
-                        state["reasoning"].append("Insight Extractor: Successfully sent Slack notification natively.")
-                    except SlackApiError as e:
-                        logger.error("slack_api_error", error=e.response["error"])
-                        state["reasoning"].append(f"Insight Extractor: Failed to send Slack alert. Error: {e.response['error']}")
-                else:
-                    state["reasoning"].append("Insight Extractor: Slack notification skipped. SLACK_BOT_TOKEN not configured.")
+                try:
+                    # Connect to Sidecar MCP Server over SSE
+                    async with sse_client("http://localhost:8001/sse") as (read, write):
+                        async with ClientSession(read, write) as session:
+                            await session.initialize()
+                            result = await session.call_tool(
+                                "send_slack_notification", 
+                                arguments={"message": slack_msg, "channel": channel}
+                            )
+                            # Log result from MCP Server
+                            res_text = result.content[0].text if result.content else str(result)
+                            state["reasoning"].append(f"Insight Extractor: MCP Tool Result -> {res_text}")
+                            logger.info("mcp_slack_tool_result", result=res_text)
+                except Exception as e:
+                    logger.error("mcp_client_error", error=str(e))
+                    state["reasoning"].append(f"Insight Extractor: Failed to reach MCP Sidecar. Error: {e}")
     
     if not state["summary"]:
         state["summary"] = "Data processed successfully."

@@ -42,7 +42,7 @@ def get_llm_for_query(
         return ChatOpenAI(
             model=settings.VLLM_MODEL,
             base_url=settings.VLLM_BASE_URL,
-            api_key="dummy",  # vLLM doesn't require API key by default
+            api_key="dummy", 
             temperature=0.1,
         )
 

@@ -88,3 +88,16 @@ spec:
             periodSeconds: 60
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        - name: mcp-slack-server
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          command: ["/app/.venv/bin/python", "-m", "backend.mcp.slack_mcp_server"]
+          ports:
+            - name: mcp-sse
+              containerPort: 8001
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}

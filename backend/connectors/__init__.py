@@ -5,8 +5,6 @@ Creates and caches connector instances by source_id.
 from backend.connectors.base import DataSource, SourceType
 from backend.connectors.postgresql import PostgreSQLConnector
 from backend.connectors.mongodb import MongoDBConnector
-from backend.connectors.snowflake import SnowflakeConnector
-from backend.connectors.bigquery import BigQueryConnector
 from backend.connectors.duckdb_file import DuckDBFileConnector
 
 _registry: dict[str, DataSource] = {}
@@ -18,8 +16,6 @@ def get_connector(source_id: str, source_type: str, credentials: dict) -> DataSo
     mapping = {
         SourceType.POSTGRESQL: PostgreSQLConnector,
         SourceType.MONGODB: MongoDBConnector,
-        SourceType.SNOWFLAKE: SnowflakeConnector,
-        SourceType.BIGQUERY: BigQueryConnector,
         SourceType.DUCKDB: DuckDBFileConnector,
     }
     cls = mapping.get(st)

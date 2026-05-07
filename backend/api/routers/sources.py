@@ -3,8 +3,10 @@ Data source CRUD + test + schema crawl endpoints.
 """
 from datetime import datetime, UTC
 from uuid import UUID
+import os
+import shutil
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -162,6 +164,101 @@ async def crawl_schema(source_id: UUID, db: AsyncSession = Depends(get_db)):
     await invalidate_cached_schema(str(source.id))
     
     return {"source_id": str(source.id), "tables": len(schema.tables)}
+
+
+UPLOAD_DIR = "/tmp/querymind_uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+@router.post("/upload", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
+async def upload_file_source(
+    file: UploadFile = File(...),
+    name: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Accept a CSV or Parquet file upload, persist it locally,
+    register it as a DuckDB source, and crawl the schema automatically.
+    """
+    allowed_extensions = {".csv", ".parquet", ".tsv"}
+    _, ext = os.path.splitext(file.filename or "")
+    if ext.lower() not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported file type '{ext}'. Allowed: {allowed_extensions}",
+        )
+
+    source_name = name.strip() or os.path.splitext(file.filename)[0]
+    dest_path = os.path.join(UPLOAD_DIR, file.filename)
+
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+
+    credentials = {"file_url": f"file://{dest_path}"}
+    encrypted = encrypt_credentials(credentials)
+
+    model = DataSourceModel(
+        name=source_name,
+        source_type="duckdb",
+        description=f"Uploaded file: {file.filename}",
+        encrypted_credentials=encrypted,
+        is_active=True,
+    )
+    db.add(model)
+    await db.flush()
+    await db.refresh(model)
+
+    connector = get_connector(str(model.id), "duckdb", credentials)
+    await connector.connect()
+    try:
+        schema = await connector.get_schema()
+    finally:
+        await connector.disconnect()
+
+    await embed_and_store_schema(schema)
+
+    snapshot = SchemaSnapshotModel(
+        source_id=model.id,
+        schema_json={
+            "source_id": schema.source_id,
+            "source_type": schema.source_type.value,
+            "database": schema.database,
+            "tables": [
+                {
+                    "name": t.name,
+                    "schema": t.schema,
+                    "row_count": t.row_count,
+                    "columns": [
+                        {
+                            "name": c.name,
+                            "data_type": c.data_type,
+                            "nullable": c.nullable,
+                            "is_primary_key": c.is_primary_key,
+                            "is_foreign_key": c.is_foreign_key,
+                            "references": c.references,
+                            "sample_values": c.sample_values,
+                        }
+                        for c in t.columns
+                    ],
+                }
+                for t in schema.tables
+            ],
+        },
+    )
+    model.last_schema_crawl = datetime.now(UTC)
+    db.add(snapshot)
+    db.add(model)
+
+    return SourceResponse(
+        id=str(model.id),
+        name=model.name,
+        source_type=model.source_type,
+        description=model.description,
+        is_active=model.is_active,
+        last_schema_crawl=model.last_schema_crawl,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
 
 
 @router.delete("/{source_id}")

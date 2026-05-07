@@ -10,7 +10,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from backend.api.routers import sources, chat, health
 from backend.core.config import settings
 from backend.core.database import engine, Base
-from backend.schema_registry import audit_models as _audit_models  # noqa: F401
 from backend.core.redis_client import get_redis
 from backend.core.qdrant_client import get_qdrant
 from backend.observability.langfuse_client import init_langfuse
@@ -25,33 +24,27 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
     logger.info("QueryMind starting up", env=settings.APP_ENV)
 
-    # Initialize DB tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables initialized")
 
-    # Test Redis connection
     redis = await get_redis()
     await redis.ping()
     logger.info("Redis connected")
 
-    # Initialize Qdrant collections
     qdrant = get_qdrant()
     await _ensure_qdrant_collections(qdrant)
     logger.info("Qdrant collections initialized")
 
-    # Initialize LangFuse
     init_langfuse()
     logger.info("LangFuse initialized")
 
-    # Setup Prometheus metrics
     setup_prometheus(app)
     logger.info("Prometheus metrics setup")
 
     logger.info("QueryMind is ready", host=settings.APP_HOST, port=settings.APP_PORT)
     yield
 
-    # Shutdown
     logger.info("QueryMind shutting down")
     await engine.dispose()
     await redis.aclose()
@@ -87,7 +80,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(
         CORSMiddleware,
@@ -97,7 +89,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Routers
     app.include_router(health.router, tags=["health"])
     app.include_router(sources.router, prefix="/api/v1/sources", tags=["sources"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])

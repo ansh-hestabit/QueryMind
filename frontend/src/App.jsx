@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import ChatPanel from "./components/ChatPanel/ChatPanel";
 import DashboardPanel from "./components/DashboardPanel/DashboardPanel";
+import SourceManagerModal from "./components/SourceManager/SourceManagerModal";
 import "./styles.css";
 
 const API_BASE = "/api/v1";
@@ -75,6 +76,12 @@ export default function App() {
   const [sourceId,   setSourceId]   = useState(() => localStorage.getItem('qm_source') || "");
 
   const [panelWidth, onDividerDown] = useResizable(420, 280, 760);
+  const [showAddSource, setShowAddSource] = useState(false);
+
+  const handleSourceAdded = useCallback((newSource) => {
+    setSources((prev) => [...prev, newSource]);
+    setSourceId(newSource.id);
+  }, []);
 
   // Sync state to localStorage
   useEffect(() => {
@@ -137,6 +144,23 @@ export default function App() {
           QueryMind
         </div>
         <div className="topbar-status">
+          <button
+            id="btn-add-source"
+            onClick={() => setShowAddSource(true)}
+            style={{
+              background: 'linear-gradient(135deg,#7c3aed,#6d28d9)',
+              border: 'none',
+              color: '#fff',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '600',
+              padding: '4px 12px',
+              marginRight: '8px',
+            }}
+          >
+            + Add Source
+          </button>
           <div className="status-dot" />
           {threadId ? (
             <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
@@ -154,6 +178,12 @@ export default function App() {
         </div>
       </header>
 
+      {showAddSource && (
+        <SourceManagerModal
+          onClose={() => setShowAddSource(false)}
+          onSourceAdded={handleSourceAdded}
+        />
+      )}
       <div className="split-layout" style={{ gridTemplateColumns: `${panelWidth}px 4px 1fr` }}>
         <ChatPanel
           messages={messages}
